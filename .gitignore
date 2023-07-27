@@ -1,0 +1,6 @@
+# common
+*.log
+logs
+*/logs
+.DS_Store
+*/.DS_Store

@@ -58,6 +58,7 @@ function config_vim() {
 }
 
 function install_docker() {
+	for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do sudo apt-get remove $pkg; done
     curl -fsSL ${DOCKER_LIST_URL} | sed "s@{{OS_RELEASE}}@${OS_RELEASE}@gi" >/etc/apt/sources.list.d/docker.list
     curl -fsSL http://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | apt-key add -
     apt update -y

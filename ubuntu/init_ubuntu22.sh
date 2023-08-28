@@ -65,10 +65,55 @@ function install_docker() {
     sudo groupadd docker
     sudo usermod -aG docker $USER
     newgrp docker
+}
 
-    # curl -fsSL ${DOCKER_CONFIG_DOWNLOAD_URL} >docker.service
-    # SYSTEMD_EDITOR="mv docker.service" systemctl edit docker
-    # systemctl daemon-reload && systemctl restart docker
+function config_docker() {
+    mkdir -p /data/docker
+    cat > /etc/docker/daemon.json << EOF
+{
+    "data-root": "/data/docker",
+    "debug": true,
+    "experimental": true,
+    "insecure-registries": [
+    ],
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-file": "3",
+        "max-size": "30m"
+    },
+    "registry-mirrors": [
+    ]
+}
+EOF
+
+    systemctl daemon-reload
+    systemctl restart docker.service
+}
+
+function config_china_docker() {
+    mkdir -p /data/docker
+    cat > /etc/docker/daemon.json << EOF
+{
+    "data-root": "/data/docker",
+    "debug": true,
+    "experimental": true,
+    "insecure-registries": [
+        "docker.mirrors.ustc.edu.cn"
+    ],
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-file": "3",
+        "max-size": "30m"
+    },
+    "registry-mirrors": [
+        "http://docker.mirrors.ustc.edu.cn",
+        "http://hub-mirror.c.163.com"
+    ]
+}
+EOF
+
+    systemctl daemon-reload
+    systemctl restart docker.service
 }
 
 # sysupdate
@@ -77,3 +122,5 @@ function install_docker() {
 # install_ohmyzsh
 # config_vim
 # install_docker
+config_docker
+# config_china_docker

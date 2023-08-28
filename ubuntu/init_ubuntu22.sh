@@ -5,10 +5,14 @@ set -e
 TZ='Asia/Shanghai'
 OS_RELEASE="$(lsb_release -cs)"
 SOURCES_LIST_URL="https://raw.githubusercontent.com/cuilan/source/main/ubuntu/sources.list"
+
 OZ_DOWNLOAD_URL='https://github.com/robbyrussell/oh-my-zsh.git'
+OZ_AUTOSUGGESTIONS_DOWNLOAD_URL='https://github.com/zsh-users/zsh-autosuggestions.git'
 OZ_SYNTAX_HIGHLIGHTING_DOWNLOAD_URL='https://github.com/zsh-users/zsh-syntax-highlighting.git'
 OZ_CONFIG_DOWNLOAD_URL='https://raw.githubusercontent.com/cuilan/source/main/zsh/zshrc'
+
 VIM_CONFIG_DOWNLOAD_URL='https://raw.githubusercontent.com/cuilan/source/main/vim/vimrc'
+
 DOCKER_LIST_URL='https://raw.githubusercontent.com/cuilan/source/main/docker/docker.list'
 DOCKER_CONFIG_DOWNLOAD_URL=''
 
@@ -39,9 +43,9 @@ function settimezone() {
 function install_ohmyzsh() {
     if [ ! -d ~/.oh-my-zsh ]; then
         git clone --depth=1 ${OZ_DOWNLOAD_URL} ~/.oh-my-zsh
+        git clone ${OZ_AUTOSUGGESTIONS_DOWNLOAD_URL} ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
         git clone ${OZ_SYNTAX_HIGHLIGHTING_DOWNLOAD_URL} ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
         curl -fsSL ${OZ_CONFIG_DOWNLOAD_URL} >~/.zshrc
-        #cp ${ZSH_TEMPLATES:-~/.oh-my-zsh/templates}/zshrc.zsh-template ~/.zshrc
         chsh -s $(grep /zsh$ /etc/shells | tail -1)
     fi
 }
@@ -72,4 +76,4 @@ function install_docker() {
 # settimezone
 # install_ohmyzsh
 # config_vim
-install_docker
+# install_docker

@@ -15,8 +15,8 @@ while getopts "h:f:n:" OPT; do
             BUILD_HOST=$OPTARG;;
         f)
             DOCKERFILE=$OPTARG;;
-	n)
-	    PROJECT_NAME=$OPTARG;;
+	    n)
+	        PROJECT_NAME=$OPTARG;;
         *)
     esac
 done

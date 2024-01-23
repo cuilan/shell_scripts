@@ -38,8 +38,8 @@ docker -H ${BUILD_HOST} push ${IMAGE_NAME}
 docker -H ${BUILD_HOST} push ${LATEST_IMAGE_NAME}
 
 # 本地运行不用删
-#docker -H ${BUILD_HOST} rmi ${IMAGE_NAME}
-#docker -H ${BUILD_HOST} rmi ${LATEST_IMAGE_NAME}
+docker -H ${BUILD_HOST} rmi ${IMAGE_NAME}
+docker -H ${BUILD_HOST} rmi ${LATEST_IMAGE_NAME}
 
 echo "Build image success --> ${IMAGE_NAME}"
 

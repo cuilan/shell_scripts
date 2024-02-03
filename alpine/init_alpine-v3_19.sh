@@ -56,20 +56,9 @@ function install_docker() {
     # and root to docker group
     addgroup root docker
 
-    rc-update add docker default
-    service docker start
-}
-
-function install_containerd() {
-    # install
-    apk add containerd containerd-ctr
-
-    rc-update add containerd default
-    service containerd start
-}
-
-function config_docker() {
+    # config
     mkdir -p /data/docker
+    mkdir -p /etc/docker
     cat > /etc/docker/daemon.json << EOF
 {
     "data-root": "/data/docker",
@@ -90,7 +79,25 @@ function config_docker() {
 }
 EOF
 
-    rc-service docker restart
+    rc-update add docker default
+    service docker start
+    
+    # 重启命令，怕忘
+    # rc-service docker restart
+}
+
+function install_containerd() {
+    # install
+    apk add containerd containerd-ctr
+
+    if [ ! -f /etc/containerd/config.toml.bak ]; then
+        cp /etc/containerd/config.toml /etc/containerd/config.toml.old
+        sed -i "s@/var/lib/containerd@/data/containerd@" /etc/containerd/config.toml
+    fi
+
+    rc-update add containerd default
+    service containerd start
+    rc-service containerd restart
 }
 
 # sysupdate
@@ -99,5 +106,4 @@ EOF
 # install_ohmyzsh
 # config_vim
 # install_docker
-config_docker
-# install_containerd
+install_containerd

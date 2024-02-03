@@ -18,7 +18,7 @@ DOCKER_CONFIG_DOWNLOAD_URL=''
 function sysupdate() {
     if [ ! -f /etc/apk/repositories.bak ]; then
         cp /etc/apk/repositories /etc/apk/repositories.old
-        curl -fsSL ${REPOSITORIES_URL} | >/etc/apk/repositories
+        curl -fsSL ${REPOSITORIES_URL} >/etc/apk/repositories
     fi
     apk update
     apk upgrade
@@ -39,7 +39,7 @@ function install_ohmyzsh() {
         git clone ${OZ_AUTOSUGGESTIONS_DOWNLOAD_URL} ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
         git clone ${OZ_SYNTAX_HIGHLIGHTING_DOWNLOAD_URL} ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
         curl -fsSL ${OZ_CONFIG_DOWNLOAD_URL} >~/.zshrc
-        chsh -s $(grep /zsh$ /etc/shells | tail -1)
+        # vim /etc/passwd update the default shell to zsh
     fi
 }
 
@@ -76,6 +76,7 @@ function config_docker() {
     "debug": true,
     "experimental": true,
     "insecure-registries": [
+        "docker.mirrors.ustc.edu.cn"
     ],
     "log-driver": "json-file",
     "log-opts": {
@@ -83,6 +84,8 @@ function config_docker() {
         "max-size": "30m"
     },
     "registry-mirrors": [
+        "http://docker.mirrors.ustc.edu.cn",
+        "http://hub-mirror.c.163.com"
     ]
 }
 EOF
@@ -90,11 +93,11 @@ EOF
     rc-service docker restart
 }
 
-sysupdate
-addpkg
-settimezone
-install_ohmyzsh
-config_vim
-install_docker
+# sysupdate
+# addpkg
+# settimezone
+# install_ohmyzsh
+# config_vim
+# install_docker
 config_docker
-install_containerd
+# install_containerd

@@ -88,7 +88,7 @@ EOF
 
 function install_containerd() {
     # install
-    apk add containerd containerd-ctr
+    apk add containerd containerd-ctr nerdctl
 
     if [ ! -f /etc/containerd/config.toml.bak ]; then
         cp /etc/containerd/config.toml /etc/containerd/config.toml.old

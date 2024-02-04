@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 set -e
 
@@ -16,7 +16,8 @@ DOCKER_LIST_URL='https://raw.githubusercontent.com/cuilan/source/main/docker/doc
 DOCKER_CONFIG_DOWNLOAD_URL=''
 
 function sysupdate() {
-    if [ ! -f /etc/apk/repositories.bak ]; then
+    apk add curl --no-cache
+    if [ ! -f /etc/apk/repositories.old ]; then
         cp /etc/apk/repositories /etc/apk/repositories.old
         curl -fsSL ${REPOSITORIES_URL} >/etc/apk/repositories
     fi
@@ -25,7 +26,7 @@ function sysupdate() {
 }
 
 function addpkg() {
-    apk add bash zsh ca-certificates vim git htop tzdata
+    apk add bash zsh ca-certificates vim curl git htop tzdata neofetch
 }
 
 function settimezone() {
@@ -106,4 +107,6 @@ function install_containerd() {
 # install_ohmyzsh
 # config_vim
 # install_docker
-install_containerd
+# install_containerd
+
+# export https_proxy=http://192.168.129.1:7891;export http_proxy=http://192.168.129.1:7891;export all_proxy=socks5://192.168.129.1:7891

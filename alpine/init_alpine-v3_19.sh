@@ -16,10 +16,12 @@ DOCKER_LIST_URL='https://raw.githubusercontent.com/cuilan/source/main/docker/doc
 DOCKER_CONFIG_DOWNLOAD_URL=''
 
 function sysupdate() {
-    apk add curl --no-cache
     if [ ! -f /etc/apk/repositories.old ]; then
         cp /etc/apk/repositories /etc/apk/repositories.old
-        curl -fsSL ${REPOSITORIES_URL} >/etc/apk/repositories
+        cat > /etc/apk/repositories << EOF
+https://mirrors.aliyun.com/alpine/v3.19/main
+https://mirrors.aliyun.com/alpine/v3.19/community
+EOF
     fi
     apk update
     apk upgrade

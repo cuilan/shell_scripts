@@ -1,6 +1,14 @@
 @REM git auto commit and push
 
 @echo off
+
+echo Current git project: %cd%
+
+if not exist .git (
+  echo This directory has not been initialized with git!
+  exit /b 1
+)
+
 setlocal
 
 @REM Get current branch

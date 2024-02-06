@@ -53,6 +53,9 @@
 * [create-ubuntu22-x86_64-vm.bat](/windows/qemu/create-ubuntu22-x86_64-vm.bat)
 
 [auto_commit.bat](/auto_commit.bat)
+
 [auto_commit.sh](/auto_commit.sh)
+
 [color.sh](/color.sh)
+
 [version.sh](/version.sh)

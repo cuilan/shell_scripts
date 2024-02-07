@@ -42,6 +42,9 @@
 * [get_k8s_crt_images.sh](/k8s/get_k8s_crt_images.sh)
 * [get_k8s_docker_images.sh](/k8s/get_k8s_docker_images.sh)
 
+## mysql
+* [archive.sql](/mysql/archive.sql)
+
 ## ubuntu
 * [check_ubuntu.sh](/ubuntu/check_ubuntu.sh)
 * [init_ubuntu.sh](/ubuntu/init_ubuntu.sh)

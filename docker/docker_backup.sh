@@ -3,6 +3,8 @@
 # 查看当前所有数据卷
 docker volume ls
 
+docker volume inspect openldap_data
+
 # local     confluence_conf
 # local     confluence_data
 # local     confluence_template

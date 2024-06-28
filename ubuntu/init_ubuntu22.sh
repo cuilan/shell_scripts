@@ -17,7 +17,7 @@ DOCKER_LIST_URL='https://raw.githubusercontent.com/cuilan/source/main/docker/doc
 DOCKER_CONFIG_DOWNLOAD_URL=''
 
 function sysupdate() {
-    if [ ! -f /etc/apt/sources.list.bak ]; then
+    if [ ! -f /etc/apt/sources.list.old ]; then
         cp /etc/apt/sources.list /etc/apt/sources.list.old
         curl -fsSL ${SOURCES_LIST_URL} | sed "s@{{OS_RELEASE}}@${OS_RELEASE}@gi" >/etc/apt/sources.list
     fi

@@ -28,7 +28,7 @@ EOF
 }
 
 function addpkg() {
-    apk add bash zsh ca-certificates vim curl git htop tzdata neofetch
+    apk add bash zsh ca-certificates vim curl git htop tzdata neofetch nfs-utils busybox-extras
 }
 
 function settimezone() {

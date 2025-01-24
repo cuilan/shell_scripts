@@ -1,0 +1,13 @@
+FROM scratch
+
+LABEL maintainer="zhangyan <zhangyan@weattech.com>"
+
+ARG SRC_PATH
+
+ENV SRC_PATH ${SRC_PATH}
+
+WORKDIR /app
+
+COPY ${SRC_PATH} .
+
+CMD ["./main"]

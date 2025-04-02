@@ -4,6 +4,8 @@ set -e
 
 TZ='Asia/Shanghai'
 
+VIM_CONFIG_DOWNLOAD_URL='https://raw.githubusercontent.com/cuilan/source/main/vim/vimrc'
+
 function sysUpdate() {
     if [ ! -f /etc/apt/sources.list.old ]; then
         cp /etc/apt/sources.list /etc/apt/sources.list.old
@@ -39,7 +41,18 @@ function setTimezone() {
     timedatectl set-timezone ${TZ}
 }
 
+function configVim() {
+    curl -fsSL ${VIM_CONFIG_DOWNLOAD_URL} >~/.vimrc
+    mkdir -p ~/.vim/bundle
+    git clone https://github.com/VundleVim/Vundle.vim.git ~/.vim/bundle/Vundle.vim
+    vim +PluginInstall +qall
+}
+
 function configBash() {
+
+}
+
+function configZsh() {
 
 }
 

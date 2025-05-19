@@ -48,7 +48,7 @@ check_single_partition() {
         echo "错误：未找到挂载点: $mount_point"
         return 1
     fi
-    
+
     local usage=$(echo "$usage_info" | awk '{print $1}')
     local available=$(echo "$usage_info" | awk '{print $2}')
     
@@ -115,8 +115,23 @@ EOF
 send_feishu_alert() {
     local messages=("$@")
     local post_data=$(generate_feishu_message "${messages[@]}")
-    
     #echo $post_data
+
+    # 标记是否需要发送通知
+    local NEED_NOTIFY=false
+    if [[ $post_data == *"警告"* ]]; then
+        NEED_NOTIFY=true
+    elif [[ $post_data == *"错误"* ]]; then
+        NEED_NOTIFY=true
+    else
+        NEED_NOTIFY=false
+    fi
+    #echo $NEED_NOTIFY
+    
+    if [ "$NEED_NOTIFY" = false ]; then
+        echo "无需发送通知"
+        return
+    fi
     curl -X POST "$FEISHU_WEBHOOK" \
          -H 'Content-Type: application/json; charset=utf-8' \
          -d "$post_data"

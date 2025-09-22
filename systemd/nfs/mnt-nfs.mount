@@ -1,0 +1,24 @@
+[Unit]
+# NFS挂载单元文件
+# 描述：自动挂载NFS共享目录到本地系统
+Description=Mount NFS share to /mnt/nfs
+# 确保网络服务已启动
+Requires=network-online.target
+After=network-online.target
+# 设置冲突关系，确保卸载时正确处理
+Conflicts=umount.target
+Before=umount.target
+
+[Mount]
+# NFS服务器地址和共享路径（需要根据实际情况修改）
+What=192.168.1.100:/path/to/share
+# 本地挂载点
+Where=/mnt/nfs
+# 文件系统类型
+Type=nfs
+# NFS挂载选项
+Options=defaults,user,rw,exec,auto,noatime,intr,tcp,nfsvers=4
+
+[Install]
+# 系统启动时自动挂载
+WantedBy=multi-user.target

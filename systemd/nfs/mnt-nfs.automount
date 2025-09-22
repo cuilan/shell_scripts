@@ -1,0 +1,17 @@
+[Unit]
+# NFS自动挂载单元文件
+# 描述：按需自动挂载NFS共享目录
+Description=Auto-mount NFS share on demand
+# 确保挂载点目录存在
+RequiresMountsFor=/mnt
+
+[Automount]
+# 自动挂载的触发路径（必须与.mount文件的Where字段一致）
+Where=/mnt/nfs
+# 空闲超时时间（秒），超时后自动卸载以节省资源
+# 注释此行表示不自动卸载
+TimeoutIdleSec=60
+
+[Install]
+# 系统启动时启用自动挂载监控
+WantedBy=multi-user.target

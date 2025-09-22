@@ -1,0 +1,68 @@
+# NFS自动挂载配置示例
+# 请根据实际情况修改以下参数，然后更新相应的systemd单元文件
+
+# =================== 基本配置 ===================
+
+# NFS服务器IP地址
+NFS_SERVER=192.168.1.100
+
+# NFS服务器上的共享路径
+NFS_SHARE_PATH=/path/to/share
+
+# 本地挂载点（默认为/mnt/nfs）
+LOCAL_MOUNT_POINT=/mnt/nfs
+
+# =================== NFS挂载选项 ===================
+
+# NFS版本（推荐使用v4）
+# 可选值：nfsvers=3, nfsvers=4, nfsvers=4.1, nfsvers=4.2
+NFS_VERSION=4
+
+# 传输协议（推荐使用tcp）
+# 可选值：tcp, udp
+TRANSPORT=tcp
+
+# 访问权限（根据需要选择）
+# 可选值：ro (只读), rw (读写)
+ACCESS_MODE=rw
+
+# 其他常用挂载选项（根据需要调整）
+# defaults     - 使用默认挂载选项
+# user         - 允许普通用户挂载
+# noatime      - 不更新访问时间，提升性能
+# intr         - 允许中断挂载操作
+# soft         - 软挂载，网络故障时返回错误而不是挂起
+# hard         - 硬挂载，网络故障时会一直重试（默认）
+# timeo=14     - 超时时间（1.4秒）
+# retrans=2    - 重传次数
+MOUNT_OPTIONS="defaults,user,rw,exec,auto,noatime,intr,tcp"
+
+# =================== 自动挂载配置 ===================
+
+# 空闲超时时间（秒），超时后自动卸载
+# 设置为0表示永不自动卸载，删除此行表示使用系统默认值
+IDLE_TIMEOUT=60
+
+# =================== 常见配置示例 ===================
+
+# 示例1：家庭NAS（群晖、威联通等）
+# NFS_SERVER=192.168.1.10
+# NFS_SHARE_PATH=/volume1/share
+# MOUNT_OPTIONS="defaults,user,rw,noatime,intr,tcp,nfsvers=4"
+
+# 示例2：生产环境高性能配置
+# NFS_SERVER=10.0.1.100
+# NFS_SHARE_PATH=/data/production
+# MOUNT_OPTIONS="defaults,rw,hard,intr,tcp,nfsvers=4.1,rsize=1048576,wsize=1048576"
+
+# 示例3：只读挂载（用于共享文档等）
+# NFS_SERVER=192.168.1.200
+# NFS_SHARE_PATH=/shared/documents
+# ACCESS_MODE=ro
+# MOUNT_OPTIONS="defaults,user,ro,noatime,intr,tcp,nfsvers=4"
+
+# =================== 安全提醒 ===================
+# 1. 确保NFS服务器已正确配置访问控制
+# 2. 在生产环境中建议使用Kerberos认证
+# 3. 考虑使用防火墙限制NFS端口访问
+# 4. 定期检查挂载状态和日志

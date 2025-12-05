@@ -13,8 +13,7 @@
 SYSTEM_TIMEZONE='Asia/Shanghai'
 SYSTEM_LOCALE='en_US.UTF-8'
 
-# VIM配置
-VIM_CONFIG_DOWNLOAD_URL='https://raw.githubusercontent.com/cuilan/source/main/vim/vimrc'
+# VIM配置（使用系统默认配置，添加基础设置）
 
 # APT镜像源配置 (默认使用清华大学镜像)
 APT_MIRROR_BASE_URL='https://mirrors.tuna.tsinghua.edu.cn/debian/'
@@ -35,11 +34,13 @@ DOCKER_REGISTRY_MIRRORS=(
 )
 
 # 常用软件包列表
+# 注意：software-properties-common 在 Debian 13 中已移除（这是 Ubuntu 的包）
+# apt-transport-https 在 Debian 13 中已内置，不再需要单独安装
 BASIC_PACKAGES=(
-    apt-transport-https ca-certificates software-properties-common
+    ca-certificates
     wget curl vim git htop sudo tzdata passwd
     zsh tree unzip zip net-tools lsof
-    htop iotop sysstat stress axel
+    iotop sysstat stress axel
     build-essential python3-dev python3-pip
 )
 
@@ -58,6 +59,7 @@ NC='\033[0m' # 无颜色
 
 # 全局变量
 USERNAME=""
+INSTALL_BASIC_PACKAGES=true
 INSTALL_DOCKER=false
 INSTALL_STATIC_IP=false
 INSTALL_CHRONY=false
@@ -135,10 +137,19 @@ interactive_config() {
     echo ""
     echo "请选择需要安装/配置的功能："
     
-    read -p "是否配置静态IP？(y/N): " -n 1 -r
+    read -p "是否安装基础软件包（wget, curl, vim, git, sudo等）？(Y/n): " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        INSTALL_BASIC_PACKAGES=false
+    fi
+    
+    read -p "是否配置IP地址？（如果虚拟机已配置静态IP可跳过）(y/N): " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         INSTALL_STATIC_IP=true
+    else
+        INSTALL_STATIC_IP=false
+        log_info "将跳过IP配置"
     fi
     
     read -p "是否安装配置Chrony时间同步？(Y/n): " -n 1 -r
@@ -156,6 +167,7 @@ interactive_config() {
     echo ""
     log_info "配置确认："
     echo "  • 用户配置: ${USERNAME:-"跳过"}"
+    echo "  • 安装基础软件包: $INSTALL_BASIC_PACKAGES"
     echo "  • 静态IP配置: $INSTALL_STATIC_IP"
     echo "  • Chrony时间同步: $INSTALL_CHRONY"
     echo "  • Docker安装: $INSTALL_DOCKER"
@@ -173,28 +185,57 @@ interactive_config() {
 system_update() {
     log_info "开始更新系统和安装基础软件包..."
     
-    # 备份原始sources.list
-    if [[ ! -f /etc/apt/sources.list.backup ]]; then
-        log_info "备份原始APT源配置..."
-        cp /etc/apt/sources.list /etc/apt/sources.list.backup
+    # 确保 sources.list.d 目录存在
+    mkdir -p /etc/apt/sources.list.d
+    
+    # 备份原始配置（Debian 13 使用 .sources 格式）
+    # 注意：APT 只识别 .sources 扩展名，所以备份文件使用 .bak 扩展名
+    if [[ -f /etc/apt/sources.list.d/debian.sources ]]; then
+        if [[ ! -f /etc/apt/sources.list.d/debian.sources.bak ]]; then
+            log_info "备份原始APT源配置..."
+            cp /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sources.bak
+        fi
     fi
     
-    # 配置APT源 (Debian 13 Trixie)
-    log_info "配置APT源为清华大学镜像..."
-    cat > /etc/apt/sources.list << EOF
-# Debian 13 (Trixie) - 清华大学镜像源
-deb ${APT_MIRROR_BASE_URL} trixie main contrib non-free non-free-firmware
-# deb-src ${APT_MIRROR_BASE_URL} trixie main contrib non-free non-free-firmware
-
-deb ${APT_MIRROR_BASE_URL} trixie-updates main contrib non-free non-free-firmware
-# deb-src ${APT_MIRROR_BASE_URL} trixie-updates main contrib non-free non-free-firmware
-
-deb ${APT_MIRROR_BASE_URL} trixie-backports main contrib non-free non-free-firmware
-# deb-src ${APT_MIRROR_BASE_URL} trixie-backports main contrib non-free non-free-firmware
-
-# Debian 官方安全更新源
-deb https://security.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
-# deb-src https://security.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
+    # 备份安全更新源配置（如果存在）
+    if [[ -f /etc/apt/sources.list.d/debian-security.sources ]]; then
+        if [[ ! -f /etc/apt/sources.list.d/debian-security.sources.bak ]]; then
+            log_info "备份原始安全更新源配置..."
+            cp /etc/apt/sources.list.d/debian-security.sources /etc/apt/sources.list.d/debian-security.sources.bak
+        fi
+    fi
+    
+    # 如果存在旧的 sources.list 文件，也备份它
+    if [[ -f /etc/apt/sources.list ]]; then
+        if [[ ! -f /etc/apt/sources.list.backup ]]; then
+            log_info "备份旧的 sources.list 文件..."
+            cp /etc/apt/sources.list /etc/apt/sources.list.backup
+        fi
+        # 清空或注释掉旧的 sources.list（Debian 13 优先使用 .sources 格式）
+        log_info "注释旧的 sources.list 文件（Debian 13 使用 .sources 格式）..."
+        sed -i 's/^/# /' /etc/apt/sources.list 2>/dev/null || true
+    fi
+    
+    # 配置APT源 (Debian 13 Trixie 使用新的 DEB822 格式)
+    log_info "配置APT源为清华大学镜像（使用新的 .sources 格式）..."
+    # 去掉 URL 末尾的斜杠（如果存在）
+    APT_MIRROR_URL="${APT_MIRROR_BASE_URL%/}"
+    cat > /etc/apt/sources.list.d/debian.sources << EOF
+Types: deb
+URIs: ${APT_MIRROR_URL}
+Suites: trixie trixie-updates trixie-backports
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+EOF
+    
+    # 配置安全更新源（单独的文件）
+    log_info "配置Debian安全更新源..."
+    cat > /etc/apt/sources.list.d/debian-security.sources << EOF
+Types: deb
+URIs: https://security.debian.org/debian-security
+Suites: trixie-security
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 EOF
     
     # 更新软件包列表
@@ -206,8 +247,20 @@ EOF
     apt upgrade -y
     
     # 安装基础软件包（包括sudo，这样后续配置才能使用sudo组）
-    log_info "安装基础软件包（包括sudo等）..."
-    apt install -y "${BASIC_PACKAGES[@]}"
+    if [[ "$INSTALL_BASIC_PACKAGES" == "true" ]]; then
+        log_info "安装基础软件包（包括sudo等）..."
+        apt install -y "${BASIC_PACKAGES[@]}"
+    else
+        log_info "跳过基础软件包安装"
+        # 如果跳过基础软件包安装，至少确保 sudo 已安装（如果用户配置了用户名）
+        if [[ -n "$USERNAME" ]]; then
+            log_info "检测到配置了用户名，确保 sudo 已安装..."
+            if ! command -v sudo &> /dev/null; then
+                log_info "安装 sudo（用户配置需要）..."
+                apt install -y sudo
+            fi
+        fi
+    fi
     
     # 清理
     log_info "清理APT缓存..."
@@ -221,17 +274,80 @@ EOF
 set_locale() {
     log_info "配置系统本地化..."
     
+    # 确保 locale 已生成
+    # 首先检查并配置 /etc/locale.gen
+    if [[ -f /etc/locale.gen ]]; then
+        # 备份原始文件
+        if [[ ! -f /etc/locale.gen.backup ]]; then
+            cp /etc/locale.gen /etc/locale.gen.backup
+        fi
+        
+        # 取消注释对应的 locale（如果被注释了）
+        # 提取 locale 的基础名称（如 en_US.UTF-8 -> en_US）
+        local locale_base=$(echo ${SYSTEM_LOCALE} | cut -d'.' -f1)
+        local locale_full=${SYSTEM_LOCALE}
+        
+        # 取消注释对应的行（处理不同的注释格式）
+        # 格式可能是: # en_US.UTF-8 UTF-8 或 # en_US UTF-8
+        sed -i "s/^# *${locale_full} UTF-8/${locale_full} UTF-8/" /etc/locale.gen 2>/dev/null || true
+        sed -i "s/^# *${locale_base} UTF-8/${locale_base} UTF-8/" /etc/locale.gen 2>/dev/null || true
+        sed -i "s/^# *${locale_full}/${locale_full}/" /etc/locale.gen 2>/dev/null || true
+        sed -i "s/^# *${locale_base}/${locale_base}/" /etc/locale.gen 2>/dev/null || true
+        
+        # 如果 locale 不存在（既没有注释也没有未注释），添加它
+        if ! grep -qE "^[^#]*${locale_full}" /etc/locale.gen 2>/dev/null && ! grep -qE "^[^#]*${locale_base}" /etc/locale.gen 2>/dev/null; then
+            echo "${locale_full} UTF-8" >> /etc/locale.gen
+            log_info "已添加 ${locale_full} 到 /etc/locale.gen"
+        fi
+    fi
+    
     # 生成locale
     if command -v locale-gen &> /dev/null; then
-        locale-gen ${SYSTEM_LOCALE}
+        log_info "生成 locale: ${SYSTEM_LOCALE}"
+        # locale-gen 不带参数时会读取 /etc/locale.gen 并生成所有未注释的 locale
+        locale-gen 2>&1 | grep -v "^$" || true
+    elif command -v localedef &> /dev/null; then
+        # 如果 locale-gen 不可用，使用 localedef
+        log_info "使用 localedef 生成 locale: ${SYSTEM_LOCALE}"
+        local locale_lang=$(echo ${SYSTEM_LOCALE} | cut -d'.' -f1)
+        local locale_territory=$(echo ${locale_lang} | cut -d'_' -f2)
+        local locale_language=$(echo ${locale_lang} | cut -d'_' -f1)
+        localedef -i ${locale_language} -f UTF-8 ${SYSTEM_LOCALE} 2>/dev/null || \
+        localedef -i ${locale_lang} -f UTF-8 ${SYSTEM_LOCALE} 2>/dev/null || true
+    fi
+    
+    # 验证 locale 是否已生成
+    if locale -a 2>/dev/null | grep -q "^${SYSTEM_LOCALE}$"; then
+        log_info "✓ Locale ${SYSTEM_LOCALE} 已成功生成"
+    else
+        log_warn "⚠ Locale ${SYSTEM_LOCALE} 生成可能失败，但继续配置..."
     fi
     
     # 设置系统locale
+    # 优先尝试使用 localectl，如果失败则使用传统方式
     if command -v localectl &> /dev/null; then
-        localectl set-locale LANG=${SYSTEM_LOCALE}
+        if localectl set-locale LANG=${SYSTEM_LOCALE} 2>/dev/null; then
+            log_info "✓ 使用 localectl 设置本地化"
+        else
+            log_warn "⚠ localectl 设置失败，使用传统方式配置..."
+            # 回退到传统方式
+            if ! grep -q "LANG=${SYSTEM_LOCALE}" /etc/environment 2>/dev/null; then
+                echo "export LANG=${SYSTEM_LOCALE}" >> /etc/environment
+                echo "export LC_ALL=${SYSTEM_LOCALE}" >> /etc/environment
+            fi
+        fi
     else
-        echo "export LANG=${SYSTEM_LOCALE}" >> /etc/environment
-        echo "export LC_ALL=${SYSTEM_LOCALE}" >> /etc/environment
+        # 直接使用传统方式
+        if ! grep -q "LANG=${SYSTEM_LOCALE}" /etc/environment 2>/dev/null; then
+            echo "export LANG=${SYSTEM_LOCALE}" >> /etc/environment
+            echo "export LC_ALL=${SYSTEM_LOCALE}" >> /etc/environment
+        fi
+    fi
+    
+    # 同时更新 locale.conf（如果存在）
+    if [[ -f /etc/locale.conf ]]; then
+        echo "LANG=${SYSTEM_LOCALE}" > /etc/locale.conf
+        echo "LC_ALL=${SYSTEM_LOCALE}" >> /etc/locale.conf
     fi
     
     log_info "✓ 系统本地化设置为: ${SYSTEM_LOCALE}"
@@ -255,38 +371,46 @@ set_timezone() {
 config_vim() {
     log_info "配置Vim编辑器..."
     
+    # 创建基础 vimrc 配置（从系统默认配置复制，添加高亮和行号）
+    create_vimrc() {
+        local vimrc_path="$1"
+        local owner="$2"
+        
+        # 如果系统有默认 vimrc，先复制它
+        if [[ -f /etc/vim/vimrc ]]; then
+            cp /etc/vim/vimrc "$vimrc_path"
+        else
+            # 如果没有系统默认配置，创建一个基础配置
+            touch "$vimrc_path"
+        fi
+        
+        # 添加基础配置（如果不存在）
+        if ! grep -q "syntax on" "$vimrc_path" 2>/dev/null; then
+            echo "" >> "$vimrc_path"
+            echo "\" 语法高亮" >> "$vimrc_path"
+            echo "syntax on" >> "$vimrc_path"
+        fi
+        
+        if ! grep -q "set number" "$vimrc_path" 2>/dev/null; then
+            echo "" >> "$vimrc_path"
+            echo "\" 显示行号" >> "$vimrc_path"
+            echo "set number" >> "$vimrc_path"
+        fi
+        
+        # 设置文件所有者
+        if [[ -n "$owner" ]]; then
+            chown "$owner:$owner" "$vimrc_path" 2>/dev/null || true
+        fi
+    }
+    
     # 为root用户配置vim
-    if curl -fsSL ${VIM_CONFIG_DOWNLOAD_URL} > /root/.vimrc 2>/dev/null; then
-        log_info "✓ 已为root用户下载Vim配置"
-    else
-        log_warn "⚠ Vim配置下载失败，使用默认配置"
-    fi
+    create_vimrc "/root/.vimrc" ""
+    log_info "✓ 已为root用户配置Vim（语法高亮和行号）"
     
     # 如果指定了用户，也为该用户配置vim
     if [[ -n "$USERNAME" && -d "/home/$USERNAME" ]]; then
-        if curl -fsSL ${VIM_CONFIG_DOWNLOAD_URL} > /home/$USERNAME/.vimrc 2>/dev/null; then
-            chown $USERNAME:$USERNAME /home/$USERNAME/.vimrc
-            log_info "✓ 已为用户 $USERNAME 下载Vim配置"
-        fi
-    fi
-    
-    # 安装Vundle插件管理器（可选）
-    if command -v git &> /dev/null; then
-        mkdir -p /root/.vim/bundle
-        if [[ ! -d /root/.vim/bundle/Vundle.vim ]]; then
-            git clone https://github.com/VundleVim/Vundle.vim.git /root/.vim/bundle/Vundle.vim 2>/dev/null || true
-        fi
-        
-        # 为指定用户也安装（以root权限创建，然后修改所有者）
-        if [[ -n "$USERNAME" && -d "/home/$USERNAME" ]]; then
-            mkdir -p /home/$USERNAME/.vim/bundle
-            chown -R $USERNAME:$USERNAME /home/$USERNAME/.vim 2>/dev/null || true
-            if [[ ! -d /home/$USERNAME/.vim/bundle/Vundle.vim ]]; then
-                # 以root权限克隆，然后修改所有者
-                git clone https://github.com/VundleVim/Vundle.vim.git /home/$USERNAME/.vim/bundle/Vundle.vim 2>/dev/null || true
-                chown -R $USERNAME:$USERNAME /home/$USERNAME/.vim/bundle/Vundle.vim 2>/dev/null || true
-            fi
-        fi
+        create_vimrc "/home/$USERNAME/.vimrc" "$USERNAME"
+        log_info "✓ 已为用户 $USERNAME 配置Vim（语法高亮和行号）"
     fi
     
     log_info "✓ Vim配置完成"
@@ -525,23 +649,56 @@ local stratum 10
 EOF
     
     # 启动并启用chronyd服务
-    systemctl start chronyd
-    systemctl enable chronyd
+    # 注意：在某些环境下（如容器或systemd未完全启动），systemctl可能无法正常工作
+    log_info "启动Chronyd服务..."
+    
+    # 尝试启动服务（忽略错误，避免脚本中断）
+    if systemctl start chronyd 2>/dev/null; then
+        log_info "✓ Chronyd服务启动命令执行成功"
+    else
+        log_warn "⚠ systemctl start chronyd 执行失败，尝试手动启动..."
+        # 尝试直接运行 chronyd（如果 systemctl 不可用）
+        if command -v chronyd &> /dev/null; then
+            chronyd -d 2>/dev/null &
+            sleep 2
+        fi
+    fi
+    
+    # 尝试启用服务（忽略错误）
+    systemctl enable chronyd 2>/dev/null || log_warn "⚠ 无法启用chronyd服务（可能systemd不可用）"
     
     # 等待服务启动
     sleep 3
     
-    # 验证chronyd状态
+    # 验证chronyd状态（多种方式检查）
+    local chrony_running=false
+    
+    # 方式1：检查systemd服务状态
     if systemctl is-active chronyd >/dev/null 2>&1; then
-        log_info "✓ Chronyd服务启动成功!"
-        
+        chrony_running=true
+        log_info "✓ Chronyd服务通过systemd启动成功"
+    # 方式2：检查进程是否运行
+    elif pgrep -x chronyd >/dev/null 2>&1; then
+        chrony_running=true
+        log_info "✓ Chronyd进程正在运行"
+    # 方式3：检查端口是否监听（chronyd默认监听323端口）
+    elif netstat -tuln 2>/dev/null | grep -q ":323 " || ss -tuln 2>/dev/null | grep -q ":323 "; then
+        chrony_running=true
+        log_info "✓ Chronyd端口正在监听"
+    fi
+    
+    if [[ "$chrony_running" == "true" ]]; then
         # 强制立即同步时间
-        chrony makestep 2>/dev/null || true
+        chrony makestep 2>/dev/null || chronyc makestep 2>/dev/null || true
         
-        log_info "时间同步配置完成"
+        log_info "✓ 时间同步配置完成"
     else
-        log_error "Chronyd服务启动失败，请检查配置"
-        return 1
+        log_warn "⚠ Chronyd服务可能未正常启动"
+        log_warn "  请手动检查："
+        log_warn "  • systemctl status chronyd"
+        log_warn "  • journalctl -xeu chronyd"
+        log_warn "  • 检查 /etc/chrony/chrony.conf 配置"
+        log_warn "  配置已保存，可以稍后手动启动服务"
     fi
 }
 

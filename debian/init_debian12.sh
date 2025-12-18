@@ -4,8 +4,6 @@ set -e
 
 TZ='Asia/Shanghai'
 
-VIM_CONFIG_DOWNLOAD_URL='https://raw.githubusercontent.com/cuilan/source/main/vim/vimrc'
-
 function sysUpdate() {
     if [ ! -f /etc/apt/sources.list.old ]; then
         cp /etc/apt/sources.list /etc/apt/sources.list.old
@@ -43,10 +41,51 @@ function setTimezone() {
 }
 
 function configVim() {
-    curl -fsSL ${VIM_CONFIG_DOWNLOAD_URL} >~/.vimrc
-    mkdir -p ~/.vim/bundle
-    git clone https://github.com/VundleVim/Vundle.vim.git ~/.vim/bundle/Vundle.vim
-    vim +PluginInstall +qall
+    echo "正在配置Vim编辑器..."
+    
+    # 创建基础 vimrc 配置（从系统默认配置复制，添加高亮和行号）
+    create_vimrc() {
+        local vimrc_path="$1"
+        local owner="$2"
+        
+        # 如果系统有默认 vimrc，先复制它
+        if [ -f /etc/vim/vimrc ]; then
+            cp /etc/vim/vimrc "$vimrc_path"
+        else
+            # 如果没有系统默认配置，创建一个基础配置
+            touch "$vimrc_path"
+        fi
+        
+        # 添加基础配置（如果不存在）
+        if ! grep -q "syntax on" "$vimrc_path" 2>/dev/null; then
+            echo "" >> "$vimrc_path"
+            echo "\" 语法高亮" >> "$vimrc_path"
+            echo "syntax on" >> "$vimrc_path"
+        fi
+        
+        if ! grep -q "set number" "$vimrc_path" 2>/dev/null; then
+            echo "" >> "$vimrc_path"
+            echo "\" 显示行号" >> "$vimrc_path"
+            echo "set number" >> "$vimrc_path"
+        fi
+        
+        # 设置文件所有者
+        if [ -n "$owner" ]; then
+            chown "$owner:$owner" "$vimrc_path" 2>/dev/null || true
+        fi
+    }
+    
+    # 为root用户配置vim
+    create_vimrc "/root/.vimrc" ""
+    echo "✓ 已为root用户配置Vim（语法高亮和行号）"
+    
+    # 如果指定了用户，也为该用户配置vim
+    if [ -n "$USERNAME" ] && [ -d "/home/$USERNAME" ]; then
+        create_vimrc "/home/$USERNAME/.vimrc" "$USERNAME"
+        echo "✓ 已为用户 $USERNAME 配置Vim（语法高亮和行号）"
+    fi
+    
+    echo "✓ Vim配置完成"
 }
 
 function configBash() {
@@ -92,10 +131,57 @@ EOF
 }
 
 function configZsh() {
-
+    echo ""
+    echo "=== Zsh 配置 ==="
+    
+    read -p "是否安装和配置 Zsh？（y/N）: " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "跳过 Zsh 安装"
+        return
+    fi
+    
+    echo "正在安装 Zsh..."
+    apt update -y
+    apt install -y zsh
+    
+    # 检查是否安装成功
+    if command -v zsh &> /dev/null; then
+        echo "✓ Zsh 安装成功"
+        
+        # 如果配置了用户，为该用户设置 zsh 为默认 shell
+        if [ -n "$USERNAME" ] && id "$USERNAME" &>/dev/null; then
+            read -p "是否为用户 $USERNAME 设置 Zsh 为默认 shell？（Y/n）: " -n 1 -r
+            echo ""
+            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                chsh -s $(which zsh) "$USERNAME" 2>/dev/null || echo "⚠ 无法为用户 $USERNAME 设置 Zsh，请手动执行: chsh -s $(which zsh)"
+                echo "✓ 已为用户 $USERNAME 设置 Zsh 为默认 shell（需要重新登录生效）"
+            fi
+        fi
+        
+        # 为 root 用户设置 zsh（可选）
+        read -p "是否为 root 用户设置 Zsh 为默认 shell？（y/N）: " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            chsh -s $(which zsh) root 2>/dev/null || echo "⚠ 无法为 root 设置 Zsh"
+            echo "✓ 已为 root 设置 Zsh 为默认 shell（需要重新登录生效）"
+        fi
+    else
+        echo "⚠ Zsh 安装失败"
+    fi
 }
 
 function configStaticIP() {
+    echo ""
+    echo "=== 静态IP配置 ==="
+    
+    read -p "是否配置静态IP？（如果虚拟机已配置静态IP可跳过）（y/N）: " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "跳过静态IP配置"
+        return
+    fi
+    
     echo "正在配置静态IP..."
     
     # 获取网络接口名称
@@ -154,18 +240,34 @@ EOF
 }
 
 function configUser() {
-    echo "正在配置用户权限..."
+    echo ""
+    echo "=== 用户配置 ==="
     
-    # 检查是否有非root用户需要配置
-    read -p "请输入需要配置sudo权限的用户名（直接回车跳过）: " USERNAME
+    read -p "是否配置用户？（y/N）: " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "跳过用户配置"
+        return
+    fi
+    
+    read -p "请输入用户名（直接回车跳过）: " USERNAME
     
     if [ -n "$USERNAME" ]; then
         # 检查用户是否存在
         if ! id "$USERNAME" &>/dev/null; then
-            echo "用户 $USERNAME 不存在，正在创建..."
-            /usr/sbin/useradd -m -s /bin/bash "$USERNAME" || useradd -m -s /bin/bash "$USERNAME"
-            echo "请为用户 $USERNAME 设置密码:"
-            passwd "$USERNAME"
+            read -p "用户 $USERNAME 不存在，是否创建新用户？（Y/n）: " -n 1 -r
+            echo ""
+            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                echo "正在创建用户 $USERNAME..."
+                /usr/sbin/useradd -m -s /bin/bash "$USERNAME" || useradd -m -s /bin/bash "$USERNAME"
+                echo "请为用户 $USERNAME 设置密码:"
+                passwd "$USERNAME"
+            else
+                echo "跳过用户创建"
+                return
+            fi
+        else
+            echo "用户 $USERNAME 已存在"
         fi
         
         # 将用户添加到sudo组
@@ -176,8 +278,8 @@ function configUser() {
             echo "%sudo   ALL=(ALL:ALL) ALL" >> /etc/sudoers
         fi
         
-        echo "用户 $USERNAME 已添加到sudo组"
-        echo "该用户现在可以使用sudo命令"
+        echo "✓ 用户 $USERNAME 已添加到sudo组"
+        echo "  该用户现在可以使用sudo命令"
     else
         echo "跳过用户配置"
     fi
@@ -185,6 +287,8 @@ function configUser() {
 
 function configChronyd() {
     echo "正在配置Chronyd时间同步服务..."
+    
+    # 注意：时间同步是基础配置，默认执行，不询问
     
     # 安装chrony
     apt update -y
@@ -238,38 +342,83 @@ logdir /var/log/chrony
 local stratum 10
 EOF
     
-    # 启动并启用chronyd服务
-    systemctl start chronyd
-    systemctl enable chronyd
+    # 启动并启用chrony服务
+    # 注意：Debian 12 中服务名称是 chrony.service，不是 chronyd.service
+    echo "启动 Chrony 服务..."
+    
+    # 尝试启动服务（忽略错误，避免脚本中断）
+    local chrony_service="chrony"
+    if systemctl start "$chrony_service" 2>/dev/null; then
+        echo "✓ Chrony 服务启动命令执行成功"
+    else
+        echo "⚠ systemctl start chrony 执行失败，尝试其他方式..."
+        # 尝试直接运行 chronyd（如果 systemctl 不可用）
+        if command -v chronyd &> /dev/null; then
+            chronyd -d 2>/dev/null &
+            sleep 2
+        fi
+    fi
+    
+    # 尝试启用服务（忽略错误）
+    systemctl enable "$chrony_service" 2>/dev/null || echo "⚠ 无法启用 chrony 服务（可能已启用或 systemd 不可用）"
     
     # 等待服务启动
     sleep 3
     
-    # 验证chronyd状态
-    if systemctl is-active chronyd >/dev/null 2>&1; then
-        echo "Chronyd服务启动成功!"
-        echo ""
-        echo "=== Chronyd状态信息 ==="
-        systemctl status chronyd --no-pager -l
-        echo ""
-        echo "=== 时间同步源状态 ==="
-        chrony sources -v
-        echo ""
-        echo "=== 时间同步统计 ==="
-        chrony tracking
-        echo ""
-        echo "时间同步配置完成!"
-    else
-        echo "Chronyd服务启动失败，请检查配置"
-        return 1
+    # 验证chrony状态（多种方式检查）
+    local chrony_running=false
+    
+    # 方式1：检查systemd服务状态
+    if systemctl is-active "$chrony_service" >/dev/null 2>&1; then
+        chrony_running=true
+        echo "✓ Chrony 服务通过 systemd 启动成功"
+    # 方式2：检查进程是否运行
+    elif pgrep -x chronyd >/dev/null 2>&1; then
+        chrony_running=true
+        echo "✓ Chronyd 进程正在运行"
+    # 方式3：检查端口是否监听（chronyd默认监听323端口）
+    elif netstat -tuln 2>/dev/null | grep -q ":323 " || ss -tuln 2>/dev/null | grep -q ":323 "; then
+        chrony_running=true
+        echo "✓ Chronyd 端口正在监听"
     fi
     
-    # 强制立即同步时间
-    chrony makestep
-    echo "已强制执行时间同步"
+    if [ "$chrony_running" = "true" ]; then
+        echo ""
+        echo "=== Chrony 状态信息 ==="
+        systemctl status "$chrony_service" --no-pager -l 2>/dev/null || echo "（无法获取 systemd 状态）"
+        echo ""
+        echo "=== 时间同步源状态 ==="
+        chrony sources -v 2>/dev/null || chronyc sources -v 2>/dev/null || echo "（无法获取同步源状态）"
+        echo ""
+        echo "=== 时间同步统计 ==="
+        chrony tracking 2>/dev/null || chronyc tracking 2>/dev/null || echo "（无法获取同步统计）"
+        echo ""
+        echo "✓ 时间同步配置完成"
+        
+        # 强制立即同步时间
+        chrony makestep 2>/dev/null || chronyc makestep 2>/dev/null || true
+        echo "已强制执行时间同步"
+    else
+        echo "⚠ Chrony 服务可能未正常启动"
+        echo "  请手动检查："
+        echo "  • systemctl status chrony"
+        echo "  • journalctl -xeu chrony"
+        echo "  • 检查 /etc/chrony/chrony.conf 配置"
+        echo "  配置已保存，可以稍后手动启动服务"
+    fi
 }
 
 function configDocker() {
+    echo ""
+    echo "=== Docker 安装 ==="
+    
+    read -p "是否安装 Docker？（y/N）: " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "跳过 Docker 安装"
+        return
+    fi
+    
     echo "正在安装Docker..."
     
     # 卸载旧版本Docker
@@ -285,8 +434,64 @@ function configDocker() {
     
     # 添加Docker官方GPG密钥
     mkdir -p /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    chmod a+r /etc/apt/keyrings/docker.gpg
+    
+    # 检查 GPG 密钥文件是否已存在且有效
+    local docker_gpg="/etc/apt/keyrings/docker.gpg"
+    local need_download=true
+    
+    if [ -f "$docker_gpg" ]; then
+        # 验证现有文件是否为有效的 GPG 密钥
+        if gpg --no-default-keyring --keyring "$docker_gpg" --list-keys &>/dev/null; then
+            echo "✓ Docker GPG 密钥已存在且有效，跳过下载"
+            need_download=false
+        else
+            echo "⚠ 现有 GPG 密钥文件无效，将重新下载"
+            rm -f "$docker_gpg"
+        fi
+    fi
+    
+    # 如果需要下载，尝试下载 GPG 密钥（带重试机制）
+    if [ "$need_download" = "true" ]; then
+        echo "正在下载 Docker GPG 密钥..."
+        local max_retries=3
+        local retry=0
+        local download_success=false
+        
+        while [ $retry -lt $max_retries ]; do
+            if curl -fsSL --connect-timeout 10 --max-time 30 https://download.docker.com/linux/debian/gpg | gpg --dearmor -o "$docker_gpg" 2>/dev/null; then
+                download_success=true
+                break
+            else
+                retry=$((retry + 1))
+                if [ $retry -lt $max_retries ]; then
+                    echo "⚠ 下载失败，正在重试 ($retry/$max_retries)..."
+                    sleep 2
+                fi
+            fi
+        done
+        
+        if [ "$download_success" = "true" ]; then
+            chmod a+r "$docker_gpg"
+            echo "✓ Docker GPG 密钥下载成功"
+        else
+            echo "❌ Docker GPG 密钥下载失败（已重试 $max_retries 次）"
+            echo "  可能的原因："
+            echo "  • 网络连接问题"
+            echo "  • Docker 官方服务器暂时不可用"
+            echo ""
+            echo "  请选择："
+            echo "  1. 跳过 Docker 安装（推荐，可稍后手动安装）"
+            echo "  2. 继续尝试安装（可能失败）"
+            read -p "请输入选择 (1/2，默认1): " -n 1 -r
+            echo ""
+            if [[ ! $REPLY =~ ^[2]$ ]]; then
+                echo "已跳过 Docker 安装"
+                return 0
+            else
+                echo "⚠ 继续安装，但可能因为缺少 GPG 密钥而失败"
+            fi
+        fi
+    fi
     
     # 添加Docker APT源
     echo \
@@ -348,24 +553,62 @@ EOF
 }
 
 function main() {
-    echo "正在初始化Debian 12系统..."
-    echo "请输入需要配置sudo权限的用户名（直接回车跳过）: "
-    read -p "用户名: " USERNAME
+    echo ""
+    echo "=========================================="
+    echo "Debian 12 系统初始化脚本"
+    echo "=========================================="
+    echo ""
+    
+    # 第一步：基础系统更新和配置
+    echo "=== 第一步：系统更新和基础配置 ==="
     echo "正在更新系统..."
     sysUpdate
-    echo "正在设置时区..."
+    
+    echo "正在设置本地化..."
     setLocale
+    
+    echo "正在设置时区..."
     setTimezone
+    
     echo "正在配置Bash环境..."
     configBash
-    echo "正在配置用户权限..."
-    configUser
+    
     echo "正在配置Chronyd时间同步服务..."
     configChronyd
-    echo "正在配置静态IP..."
+    
+    echo ""
+    echo "✓ 基础配置完成"
+    echo ""
+    
+    # 第二步：询问是否配置静态IP
     configStaticIP
-    echo "正在安装Docker..."
+    
+    # 第三步：配置用户
+    configUser
+    
+    # 第四步：询问是否安装 Zsh
+    configZsh
+    
+    # 第五步：询问是否安装 Docker
     configDocker
+    
+    echo ""
+    echo "=========================================="
+    echo "系统初始化完成！"
+    echo "=========================================="
+    echo ""
+    
+    if [ -n "$USERNAME" ]; then
+        echo "提示："
+        echo "  • 用户 $USERNAME 已配置 sudo 权限"
+        if command -v zsh &> /dev/null; then
+            echo "  • Zsh 已安装，重新登录后生效"
+        fi
+        if docker --version &> /dev/null; then
+            echo "  • Docker 已安装，用户 $USERNAME 需要重新登录才能免 sudo 使用 docker"
+        fi
+    fi
+    echo ""
 }
 
 main

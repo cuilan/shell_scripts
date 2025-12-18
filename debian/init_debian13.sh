@@ -192,7 +192,7 @@ system_update() {
     # 注意：APT 只识别 .sources 扩展名，所以备份文件使用 .bak 扩展名
     if [[ -f /etc/apt/sources.list.d/debian.sources ]]; then
         if [[ ! -f /etc/apt/sources.list.d/debian.sources.bak ]]; then
-            log_info "备份原始APT源配置..."
+        log_info "备份原始APT源配置..."
             cp /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sources.bak
         fi
     fi
@@ -248,8 +248,8 @@ EOF
     
     # 安装基础软件包（包括sudo，这样后续配置才能使用sudo组）
     if [[ "$INSTALL_BASIC_PACKAGES" == "true" ]]; then
-        log_info "安装基础软件包（包括sudo等）..."
-        apt install -y "${BASIC_PACKAGES[@]}"
+    log_info "安装基础软件包（包括sudo等）..."
+    apt install -y "${BASIC_PACKAGES[@]}"
     else
         log_info "跳过基础软件包安装"
         # 如果跳过基础软件包安装，至少确保 sudo 已安装（如果用户配置了用户名）
@@ -339,8 +339,8 @@ set_locale() {
     else
         # 直接使用传统方式
         if ! grep -q "LANG=${SYSTEM_LOCALE}" /etc/environment 2>/dev/null; then
-            echo "export LANG=${SYSTEM_LOCALE}" >> /etc/environment
-            echo "export LC_ALL=${SYSTEM_LOCALE}" >> /etc/environment
+        echo "export LANG=${SYSTEM_LOCALE}" >> /etc/environment
+        echo "export LC_ALL=${SYSTEM_LOCALE}" >> /etc/environment
         fi
     fi
     
@@ -379,11 +379,11 @@ config_vim() {
         # 如果系统有默认 vimrc，先复制它
         if [[ -f /etc/vim/vimrc ]]; then
             cp /etc/vim/vimrc "$vimrc_path"
-        else
+    else
             # 如果没有系统默认配置，创建一个基础配置
             touch "$vimrc_path"
-        fi
-        
+    fi
+    
         # 添加基础配置（如果不存在）
         if ! grep -q "syntax on" "$vimrc_path" 2>/dev/null; then
             echo "" >> "$vimrc_path"
@@ -402,13 +402,13 @@ config_vim() {
             chown "$owner:$owner" "$vimrc_path" 2>/dev/null || true
         fi
     }
-    
+        
     # 为root用户配置vim
     create_vimrc "/root/.vimrc" ""
     log_info "✓ 已为root用户配置Vim（语法高亮和行号）"
     
     # 如果指定了用户，也为该用户配置vim
-    if [[ -n "$USERNAME" && -d "/home/$USERNAME" ]]; then
+        if [[ -n "$USERNAME" && -d "/home/$USERNAME" ]]; then
         create_vimrc "/home/$USERNAME/.vimrc" "$USERNAME"
         log_info "✓ 已为用户 $USERNAME 配置Vim（语法高亮和行号）"
     fi

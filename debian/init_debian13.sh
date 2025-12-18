@@ -15,8 +15,8 @@ SYSTEM_LOCALE='en_US.UTF-8'
 
 # VIM配置（使用系统默认配置，添加基础设置）
 
-# APT镜像源配置 (默认使用清华大学镜像)
-APT_MIRROR_BASE_URL='https://mirrors.tuna.tsinghua.edu.cn/debian/'
+# APT镜像源配置 (默认使用阿里镜像)
+APT_MIRROR_BASE_URL='https://mirrors.aliyun.com/debian'
 
 # 时间同步服务器
 NTP_SERVERS=(

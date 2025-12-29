@@ -189,15 +189,12 @@ for CONTAINER_NAME in "${CONTAINERS[@]}"; do
     echo -e "  当前镜像: ${OLD_IMAGE}"
     echo -e "  新镜像: ${NEW_IMAGE}"
     
-    # 使用 awk 替换镜像名称（更安全，避免 sed 特殊字符问题）
+    # 使用 awk 替换镜像名称（兼容旧版 awk）
     awk -v line="$ACTUAL_IMAGE_LINE" -v new_image="$NEW_IMAGE" '
         NR == line {
-            # 匹配 image: 行，替换整个镜像名称
-            if (match($0, /^([[:space:]]*image:[[:space:]]*)(.*)$/, arr)) {
-                print arr[1] new_image
-            } else {
-                print $0
-            }
+            # 提取 image: 前面的空格和冒号
+            sub(/image:[[:space:]]*.*$/, "image: " new_image)
+            print
             next
         }
         { print }
@@ -214,9 +211,9 @@ for CONTAINER_NAME in "${CONTAINERS[@]}"; do
     if echo "$UPDATED_LINE" | grep -q "image:.*${NEW_IMAGE}"; then
         echo -e "${GREEN}  ✓ 镜像已更新${NC}"
         
-        # 记录部署历史
+        # 记录部署历史（包含容器名称）
         TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-        echo "${TIMESTAMP} update image [${OLD_IMAGE}] -> [${NEW_IMAGE}]" >> "$DEPLOY_HISTORY"
+        echo "${TIMESTAMP} container [${CONTAINER}] update image [${OLD_IMAGE}] -> [${NEW_IMAGE}]" >> "$DEPLOY_HISTORY"
     else
         echo -e "${RED}  ✗ 镜像更新失败${NC}"
         exit 1
@@ -254,4 +251,5 @@ else
     echo -e "${RED}✗ 服务部署失败!${NC}"
     exit 1
 fi
+
 

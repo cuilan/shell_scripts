@@ -48,7 +48,10 @@ BASIC_PACKAGES=(
 # 脚本执行区域 - 以下内容通常不需要修改  
 #=============================================================================
 
-set -e
+# 错误处理：使用更宽松的方式以支持幂等性
+# 不设置 set -e，允许命令失败后继续执行（幂等性需要）
+# 使用 set -u 来捕获未定义变量错误
+set -u
 
 # 颜色定义
 RED='\033[0;31m'
@@ -63,6 +66,7 @@ INSTALL_BASIC_PACKAGES=true
 INSTALL_DOCKER=false
 INSTALL_STATIC_IP=false
 INSTALL_CHRONY=false
+INSTALL_ZSH=false
 
 # 日志函数
 log_info() {
@@ -164,6 +168,12 @@ interactive_config() {
         INSTALL_DOCKER=true
     fi
     
+    read -p "是否安装配置Zsh和oh-my-zsh？(Y/n): " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        INSTALL_ZSH=true
+    fi
+    
     echo ""
     log_info "配置确认："
     echo "  • 用户配置: ${USERNAME:-"跳过"}"
@@ -171,6 +181,7 @@ interactive_config() {
     echo "  • 静态IP配置: $INSTALL_STATIC_IP"
     echo "  • Chrony时间同步: $INSTALL_CHRONY"
     echo "  • Docker安装: $INSTALL_DOCKER"
+    echo "  • Zsh和oh-my-zsh安装: $INSTALL_ZSH"
     echo ""
     
     read -p "确认开始初始化？(Y/n): " -n 1 -r
@@ -212,8 +223,11 @@ system_update() {
             cp /etc/apt/sources.list /etc/apt/sources.list.backup
         fi
         # 清空或注释掉旧的 sources.list（Debian 13 优先使用 .sources 格式）
-        log_info "注释旧的 sources.list 文件（Debian 13 使用 .sources 格式）..."
-        sed -i 's/^/# /' /etc/apt/sources.list 2>/dev/null || true
+        # 幂等性：只注释未注释的行
+        if grep -qE '^[^#]' /etc/apt/sources.list 2>/dev/null; then
+            log_info "注释旧的 sources.list 文件（Debian 13 使用 .sources 格式）..."
+            sed -i 's/^\([^#]\)/# \1/' /etc/apt/sources.list 2>/dev/null || true
+        fi
     fi
     
     # 配置APT源 (Debian 13 Trixie 使用新的 DEB822 格式)
@@ -289,12 +303,22 @@ set_locale() {
         
         # 取消注释对应的行（处理不同的注释格式）
         # 格式可能是: # en_US.UTF-8 UTF-8 或 # en_US UTF-8
-        sed -i "s/^# *${locale_full} UTF-8/${locale_full} UTF-8/" /etc/locale.gen 2>/dev/null || true
-        sed -i "s/^# *${locale_base} UTF-8/${locale_base} UTF-8/" /etc/locale.gen 2>/dev/null || true
-        sed -i "s/^# *${locale_full}/${locale_full}/" /etc/locale.gen 2>/dev/null || true
-        sed -i "s/^# *${locale_base}/${locale_base}/" /etc/locale.gen 2>/dev/null || true
+        # 幂等性：只处理被注释的行，避免重复处理
+        if grep -qE "^#.*${locale_full} UTF-8" /etc/locale.gen 2>/dev/null; then
+            sed -i "s/^# *${locale_full} UTF-8/${locale_full} UTF-8/" /etc/locale.gen 2>/dev/null || true
+        fi
+        if grep -qE "^#.*${locale_base} UTF-8" /etc/locale.gen 2>/dev/null; then
+            sed -i "s/^# *${locale_base} UTF-8/${locale_base} UTF-8/" /etc/locale.gen 2>/dev/null || true
+        fi
+        if grep -qE "^#.*${locale_full}" /etc/locale.gen 2>/dev/null && ! grep -qE "^[^#]*${locale_full}" /etc/locale.gen 2>/dev/null; then
+            sed -i "s/^# *${locale_full}/${locale_full}/" /etc/locale.gen 2>/dev/null || true
+        fi
+        if grep -qE "^#.*${locale_base}" /etc/locale.gen 2>/dev/null && ! grep -qE "^[^#]*${locale_base}" /etc/locale.gen 2>/dev/null; then
+            sed -i "s/^# *${locale_base}/${locale_base}/" /etc/locale.gen 2>/dev/null || true
+        fi
         
         # 如果 locale 不存在（既没有注释也没有未注释），添加它
+        # 幂等性：检查是否已存在
         if ! grep -qE "^[^#]*${locale_full}" /etc/locale.gen 2>/dev/null && ! grep -qE "^[^#]*${locale_base}" /etc/locale.gen 2>/dev/null; then
             echo "${locale_full} UTF-8" >> /etc/locale.gen
             log_info "已添加 ${locale_full} 到 /etc/locale.gen"
@@ -331,23 +355,41 @@ set_locale() {
         else
             log_warn "⚠ localectl 设置失败，使用传统方式配置..."
             # 回退到传统方式
-            if ! grep -q "LANG=${SYSTEM_LOCALE}" /etc/environment 2>/dev/null; then
+            # 幂等性：检查并更新，避免重复追加
+            if ! grep -q "^export LANG=${SYSTEM_LOCALE}" /etc/environment 2>/dev/null; then
                 echo "export LANG=${SYSTEM_LOCALE}" >> /etc/environment
+            else
+                # 如果存在但值不同，更新它
+                sed -i "s|^export LANG=.*|export LANG=${SYSTEM_LOCALE}|" /etc/environment 2>/dev/null || true
+            fi
+            if ! grep -q "^export LC_ALL=${SYSTEM_LOCALE}" /etc/environment 2>/dev/null; then
                 echo "export LC_ALL=${SYSTEM_LOCALE}" >> /etc/environment
+            else
+                sed -i "s|^export LC_ALL=.*|export LC_ALL=${SYSTEM_LOCALE}|" /etc/environment 2>/dev/null || true
             fi
         fi
     else
         # 直接使用传统方式
-        if ! grep -q "LANG=${SYSTEM_LOCALE}" /etc/environment 2>/dev/null; then
-        echo "export LANG=${SYSTEM_LOCALE}" >> /etc/environment
-        echo "export LC_ALL=${SYSTEM_LOCALE}" >> /etc/environment
+        # 幂等性：检查并更新，避免重复追加
+        if ! grep -q "^export LANG=${SYSTEM_LOCALE}" /etc/environment 2>/dev/null; then
+            echo "export LANG=${SYSTEM_LOCALE}" >> /etc/environment
+        else
+            sed -i "s|^export LANG=.*|export LANG=${SYSTEM_LOCALE}|" /etc/environment 2>/dev/null || true
+        fi
+        if ! grep -q "^export LC_ALL=${SYSTEM_LOCALE}" /etc/environment 2>/dev/null; then
+            echo "export LC_ALL=${SYSTEM_LOCALE}" >> /etc/environment
+        else
+            sed -i "s|^export LC_ALL=.*|export LC_ALL=${SYSTEM_LOCALE}|" /etc/environment 2>/dev/null || true
         fi
     fi
     
     # 同时更新 locale.conf（如果存在）
+    # 幂等性：检查并更新配置
     if [[ -f /etc/locale.conf ]]; then
-        echo "LANG=${SYSTEM_LOCALE}" > /etc/locale.conf
-        echo "LC_ALL=${SYSTEM_LOCALE}" >> /etc/locale.conf
+        if ! grep -q "^LANG=${SYSTEM_LOCALE}" /etc/locale.conf 2>/dev/null || ! grep -q "^LC_ALL=${SYSTEM_LOCALE}" /etc/locale.conf 2>/dev/null; then
+            echo "LANG=${SYSTEM_LOCALE}" > /etc/locale.conf
+            echo "LC_ALL=${SYSTEM_LOCALE}" >> /etc/locale.conf
+        fi
     fi
     
     log_info "✓ 系统本地化设置为: ${SYSTEM_LOCALE}"
@@ -376,13 +418,15 @@ config_vim() {
         local vimrc_path="$1"
         local owner="$2"
         
-        # 如果系统有默认 vimrc，先复制它
-        if [[ -f /etc/vim/vimrc ]]; then
-            cp /etc/vim/vimrc "$vimrc_path"
-    else
-            # 如果没有系统默认配置，创建一个基础配置
-            touch "$vimrc_path"
-    fi
+        # 如果系统有默认 vimrc，先复制它（幂等性：只在目标文件不存在时复制）
+        if [[ ! -f "$vimrc_path" ]]; then
+            if [[ -f /etc/vim/vimrc ]]; then
+                cp /etc/vim/vimrc "$vimrc_path"
+            else
+                # 如果没有系统默认配置，创建一个基础配置
+                touch "$vimrc_path"
+            fi
+        fi
     
         # 添加基础配置（如果不存在）
         if ! grep -q "syntax on" "$vimrc_path" 2>/dev/null; then
@@ -416,68 +460,134 @@ config_vim() {
     log_info "✓ Vim配置完成"
 }
 
-# 配置Bash环境
-config_bash() {
-    log_info "配置Bash环境..."
-    
-    # 配置全局PATH环境变量
-    cat > /etc/environment << 'EOF'
-PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-EOF
-    
-    # 配置/etc/profile确保所有用户都有完整的PATH
-    if ! grep -q "PATH.*sbin" /etc/profile 2>/dev/null; then
-        cat >> /etc/profile << 'EOF'
-
-# 确保所有用户都有完整的PATH
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
-
-# 设置一些有用的别名
-alias ll='ls -alF'
-alias la='ls -A'
-alias l='ls -CF'
-alias grep='grep --color=auto'
-alias fgrep='fgrep --color=auto'
-alias egrep='egrep --color=auto'
-EOF
+# 配置Zsh环境
+config_zsh() {
+    if [[ "$INSTALL_ZSH" != "true" ]]; then
+        log_info "跳过Zsh和oh-my-zsh安装"
+        return
     fi
     
-    # 为root用户配置.bashrc
-    if ! grep -q "/usr/sbin:/sbin" /root/.bashrc 2>/dev/null; then
-        cat >> /root/.bashrc << 'EOF'
-
-# 添加系统管理目录到PATH
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
-
-# 有用的别名
-alias ll='ls -alF'
-alias la='ls -A' 
-alias l='ls -CF'
-alias ..='cd ..'
-alias ...='cd ../..'
-EOF
+    log_info "配置Zsh环境..."
+    
+    # 检查并安装必要的依赖（zsh、git、curl）
+    local need_install=false
+    local packages_to_install=()
+    
+    if ! command -v zsh &> /dev/null; then
+        need_install=true
+        packages_to_install+=(zsh)
     fi
     
-    # 为指定用户配置.bashrc
-    if [[ -n "$USERNAME" && -d "/home/$USERNAME" ]]; then
-        if ! grep -q "/usr/sbin:/sbin" /home/$USERNAME/.bashrc 2>/dev/null; then
-            cat >> /home/$USERNAME/.bashrc << 'EOF'
-
-# 添加系统管理目录到PATH
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
-
-# 有用的别名
-alias ll='ls -alF'
-alias la='ls -A'
-alias l='ls -CF' 
-alias ..='cd ..'
-alias ...='cd ../..'
-EOF
-            chown $USERNAME:$USERNAME /home/$USERNAME/.bashrc 2>/dev/null || true
+    if ! command -v git &> /dev/null; then
+        need_install=true
+        packages_to_install+=(git)
+    fi
+    
+    if ! command -v curl &> /dev/null; then
+        need_install=true
+        packages_to_install+=(curl)
+    fi
+    
+    if [[ "$need_install" == "true" ]]; then
+        log_info "安装必要依赖: ${packages_to_install[*]}..."
+        apt update -y
+        apt install -y "${packages_to_install[@]}"
+    else
+        log_info "✓ 必要依赖已安装（zsh, git, curl）"
+    fi
+    
+    # 安装oh-my-zsh的函数
+    install_ohmyzsh() {
+        local user_home="$1"
+        local username="$2"
+        
+        # 检查oh-my-zsh是否已安装
+        if [[ -d "$user_home/.oh-my-zsh" ]]; then
+            log_info "oh-my-zsh已存在于 $user_home"
+            return
         fi
+        
+        log_info "为用户 $username 安装oh-my-zsh..."
+        
+        # 使用非交互式方式安装oh-my-zsh
+        # RUNZSH=no: 不自动运行zsh
+        # CHSH=no: 不自动切换默认shell
+        export RUNZSH=no
+        export CHSH=no
+        
+        # 如果指定了用户，切换到该用户执行安装
+        if [[ -n "$username" && "$username" != "root" ]]; then
+            # 使用su切换到用户执行安装脚本
+            # 注意：需要先设置环境变量，然后执行安装命令
+            su - "$username" -c "export RUNZSH=no CHSH=no && sh -c \"\$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\" \"\" --unattended" || {
+                log_warn "使用su安装失败，尝试直接克隆..."
+                # 如果su失败，直接克隆到用户目录
+                git clone https://github.com/ohmyzsh/ohmyzsh.git "$user_home/.oh-my-zsh" 2>/dev/null || {
+                    log_error "oh-my-zsh安装失败"
+                    return 1
+                }
+                chown -R "$username:$username" "$user_home/.oh-my-zsh"
+            }
+        else
+            # root用户直接执行
+            export RUNZSH=no CHSH=no
+            sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || {
+                log_warn "安装脚本失败，尝试直接克隆..."
+                git clone https://github.com/ohmyzsh/ohmyzsh.git "$user_home/.oh-my-zsh" 2>/dev/null || {
+                    log_error "oh-my-zsh安装失败"
+                    return 1
+                }
+            }
+            unset RUNZSH CHSH
+        fi
+        
+        log_info "✓ oh-my-zsh安装完成"
+    }
+    
+    # 切换默认shell的函数
+    change_shell() {
+        local username="$1"
+        local zsh_path=$(command -v zsh)
+        
+        if [[ -z "$zsh_path" ]]; then
+            log_error "未找到zsh，无法切换默认shell"
+            return 1
+        fi
+        
+        # 获取当前用户的默认shell
+        local current_shell=$(getent passwd "$username" | cut -d: -f7)
+        
+        if [[ "$current_shell" != "$zsh_path" ]]; then
+            log_info "为用户 $username 切换默认shell到zsh..."
+            # 使用chsh切换shell（需要root权限）
+            if chsh -s "$zsh_path" "$username" 2>/dev/null; then
+                log_info "✓ 用户 $username 的默认shell已切换到zsh"
+            else
+                log_warn "⚠ 使用chsh切换失败，跳过切换默认shell"
+                log_warn "  用户 $username 的默认shell仍然是: $current_shell"
+                log_warn "  可以稍后手动执行: chsh -s $zsh_path $username"
+                return 1
+            fi
+        else
+            log_info "用户 $username 的默认shell已经是zsh"
+        fi
+    }
+    
+    # 为root用户安装oh-my-zsh并切换shell
+    log_info "为root用户安装oh-my-zsh..."
+    install_ohmyzsh "/root" "root"
+    change_shell "root"
+    
+    # 为指定用户安装oh-my-zsh并切换shell
+    if [[ -n "$USERNAME" && -d "/home/$USERNAME" ]]; then
+        log_info "为用户 $USERNAME 安装oh-my-zsh..."
+        install_ohmyzsh "/home/$USERNAME" "$USERNAME"
+        change_shell "$USERNAME"
     fi
     
-    log_info "✓ Bash环境配置完成"
+    log_info "✓ Zsh和oh-my-zsh安装完成"
+    log_info "注意：请手动将.zshrc文件复制到用户目录（~/.zshrc）"
+    log_info "注意：切换shell后需要重新登录才能生效"
 }
 
 # 配置用户权限
@@ -502,11 +612,21 @@ config_user() {
     fi
     
     # 将用户添加到sudo组（sudo已在system_update阶段安装）
-    usermod -aG sudo "$USERNAME"
+    # 幂等性：检查用户是否已在sudo组中
+    if ! groups "$USERNAME" | grep -q "\bsudo\b"; then
+        log_info "将用户 $USERNAME 添加到sudo组..."
+        usermod -aG sudo "$USERNAME"
+    else
+        log_info "用户 $USERNAME 已在sudo组中"
+    fi
     
     # 确保sudo组在sudoers中有权限
-    if ! grep -q "^%sudo" /etc/sudoers; then
+    # 幂等性：检查配置是否已存在
+    if ! grep -qE "^%sudo\s+ALL=\(ALL:ALL\)\s+ALL" /etc/sudoers; then
+        log_info "配置sudo组权限..."
         echo "%sudo   ALL=(ALL:ALL) ALL" >> /etc/sudoers
+    else
+        log_info "sudo组权限已配置"
     fi
     
     log_info "✓ 用户 $USERNAME 已添加到sudo组"
@@ -539,8 +659,12 @@ config_static_ip() {
     read -p "DNS服务器 (例如: 8.8.8.8): " dns_server
     
     # 备份原始网络配置
+    # 幂等性：只在首次配置时备份，避免重复备份
     if [[ -f /etc/network/interfaces ]]; then
-        cp /etc/network/interfaces /etc/network/interfaces.backup.$(date +%Y%m%d_%H%M%S)
+        if [[ ! -f /etc/network/interfaces.backup ]]; then
+            log_info "备份原始网络配置..."
+            cp /etc/network/interfaces /etc/network/interfaces.backup
+        fi
     fi
     
     # 检查是否使用NetworkManager
@@ -605,12 +729,23 @@ config_chrony() {
     apt install -y chrony
     
     # 停止并禁用systemd-timesyncd
-    systemctl stop systemd-timesyncd 2>/dev/null || true
-    systemctl disable systemd-timesyncd 2>/dev/null || true
+    # 幂等性：检查服务状态
+    if systemctl is-active --quiet systemd-timesyncd 2>/dev/null; then
+        log_info "停止systemd-timesyncd服务..."
+        systemctl stop systemd-timesyncd 2>/dev/null || true
+    fi
+    if systemctl is-enabled --quiet systemd-timesyncd 2>/dev/null; then
+        log_info "禁用systemd-timesyncd服务..."
+        systemctl disable systemd-timesyncd 2>/dev/null || true
+    fi
     
     # 备份原始配置文件
+    # 幂等性：只在首次配置时备份，避免重复备份
     if [[ -f /etc/chrony/chrony.conf ]]; then
-        cp /etc/chrony/chrony.conf /etc/chrony/chrony.conf.backup.$(date +%Y%m%d_%H%M%S)
+        if [[ ! -f /etc/chrony/chrony.conf.backup ]]; then
+            log_info "备份原始chrony配置..."
+            cp /etc/chrony/chrony.conf /etc/chrony/chrony.conf.backup
+        fi
     fi
     
     # 生成chrony.conf配置
@@ -665,7 +800,12 @@ EOF
     fi
     
     # 尝试启用服务（忽略错误）
-    systemctl enable chronyd 2>/dev/null || log_warn "⚠ 无法启用chronyd服务（可能systemd不可用）"
+    # 幂等性：检查服务是否已启用
+    if ! systemctl is-enabled --quiet chronyd 2>/dev/null; then
+        systemctl enable chronyd 2>/dev/null || log_warn "⚠ 无法启用chronyd服务（可能systemd不可用）"
+    else
+        log_info "Chronyd服务已启用开机自启"
+    fi
     
     # 等待服务启动
     sleep 3
@@ -723,14 +863,25 @@ config_docker() {
         lsb-release
     
     # 添加Docker官方GPG密钥
+    # 幂等性：检查密钥是否已存在
     mkdir -p /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    chmod a+r /etc/apt/keyrings/docker.gpg
+    if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
+        log_info "添加Docker官方GPG密钥..."
+        curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        chmod a+r /etc/apt/keyrings/docker.gpg
+    else
+        log_info "Docker GPG密钥已存在"
+    fi
     
     # 添加Docker APT源
-    echo \
-        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
-        $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    # 幂等性：检查源是否已配置
+    local docker_repo="deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable"
+    if [[ ! -f /etc/apt/sources.list.d/docker.list ]] || ! grep -qF "$docker_repo" /etc/apt/sources.list.d/docker.list 2>/dev/null; then
+        log_info "添加Docker APT源..."
+        echo "$docker_repo" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    else
+        log_info "Docker APT源已配置"
+    fi
     
     # 更新APT缓存并安装Docker CE
     apt update -y
@@ -774,8 +925,19 @@ EOF
 EOF
     
     # 启动Docker服务
-    systemctl start docker
-    systemctl enable docker
+    # 幂等性：检查服务状态
+    if ! systemctl is-active --quiet docker; then
+        log_info "启动Docker服务..."
+        systemctl start docker
+    else
+        log_info "Docker服务已在运行"
+    fi
+    if ! systemctl is-enabled --quiet docker; then
+        log_info "启用Docker服务开机自启..."
+        systemctl enable docker
+    else
+        log_info "Docker服务已启用开机自启"
+    fi
     
     # 验证Docker安装
     if docker --version > /dev/null 2>&1; then
@@ -783,9 +945,15 @@ EOF
         docker --version
         
         # 将用户添加到docker组
+        # 幂等性：检查用户是否已在docker组中
         if [[ -n "$USERNAME" ]]; then
-            usermod -aG docker "$USERNAME"
-            log_info "✓ 用户 $USERNAME 已添加到docker组"
+            if ! groups "$USERNAME" | grep -q "\bdocker\b"; then
+                log_info "将用户 $USERNAME 添加到docker组..."
+                usermod -aG docker "$USERNAME"
+                log_info "✓ 用户 $USERNAME 已添加到docker组"
+            else
+                log_info "✓ 用户 $USERNAME 已在docker组中"
+            fi
             log_info "该用户重新登录后可以免sudo运行docker命令"
         fi
     else
@@ -856,7 +1024,7 @@ main() {
     set_locale
     set_timezone
     config_vim
-    config_bash
+    config_zsh
     config_user
     config_chrony
     config_static_ip

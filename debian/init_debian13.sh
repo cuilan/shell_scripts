@@ -413,7 +413,7 @@ set_timezone() {
 config_vim() {
     log_info "配置Vim编辑器..."
     
-    # 创建基础 vimrc 配置（从系统默认配置复制，添加高亮和行号）
+    # 创建基础 vimrc 配置
     create_vimrc() {
         local vimrc_path="$1"
         local owner="$2"
@@ -429,16 +429,20 @@ config_vim() {
         fi
     
         # 添加基础配置（如果不存在）
-        if ! grep -q "syntax on" "$vimrc_path" 2>/dev/null; then
-            echo "" >> "$vimrc_path"
-            echo "\" 语法高亮" >> "$vimrc_path"
-            echo "syntax on" >> "$vimrc_path"
-        fi
-        
-        if ! grep -q "set number" "$vimrc_path" 2>/dev/null; then
-            echo "" >> "$vimrc_path"
-            echo "\" 显示行号" >> "$vimrc_path"
-            echo "set number" >> "$vimrc_path"
+        # 幂等性：检查是否已存在关键配置，避免重复添加
+        if ! grep -q "au BufReadPost \* if line" "$vimrc_path" 2>/dev/null; then
+            cat >> "$vimrc_path" << 'EOF'
+
+" 基础设置
+set number
+set background=dark
+set compatible
+syntax on
+au BufReadPost * if line("'\"") > 1 && line("'\"") <= line("$") | exe "normal! g'\"" | endif
+EOF
+            log_info "已添加 Vim 基础配置到 $vimrc_path"
+        else
+            log_info "Vim 基础配置已存在于 $vimrc_path"
         fi
         
         # 设置文件所有者

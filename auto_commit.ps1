@@ -20,11 +20,25 @@ function Write-ColorText {
     Write-Host $Text -NoNewline
 }
 
-# 显示当前目录
-Write-Host "Current git project: $(Get-Location)"
+# 显示当前目录（紫色）
+Write-Host "Current git project: " -NoNewline
+Write-Host "$(Get-Location)" -ForegroundColor Magenta
+Write-Host ""
 
 # 检查是否为git仓库
 if (-not (Test-Path ".git")) {
-    Write-Host "This directory has not been initialized with git!"
+    Write-Host "This directory has not been initialized with git!" -ForegroundColor Red
     exit 1
 }
+
+# 获取当前分支
+$branchLine = git branch | Where-Object { $_ -like "* *" }
+$branch = $branchLine.TrimStart('*').Trim()
+
+# 显示分支信息（绿色）
+Write-Host "Auto commit and push to branch: " -NoNewline
+Write-Host "[$branch]" -ForegroundColor Green
+Write-Host ""
+
+# 添加所有更改
+# git add .
